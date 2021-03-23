@@ -18,7 +18,7 @@ app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
 mysql = MySQL(app)
 
 
-Articles = Articles()
+# Articles = Articles()
 
 
 # Index
@@ -36,13 +36,34 @@ def about():
 # Articles
 @app.route('/articles')
 def articles():
-    return render_template('articles.html', articles=Articles)
+
+    cur = mysql.connection.cursor()
+
+    result = cur.execute("SELECT * FROM articles")
+
+    articless = cur.fetchall()  # fetches in dictionary form
+
+    if result > 0:
+        return render_template('articles.html', articles=articless)
+    else:
+        msg = 'No Articles Found'
+        return render_template('articles.html', msg=msg)
+
+    cur.close()
 
 
 #  One particular Article
 @app.route('/article/<string:ids>/')
 def article(ids):
-    return render_template('article.html', id=ids)
+
+    cur = mysql.connection.cursor()
+
+    result = cur.execute("SELECT * FROM articles WHERE id = %s", {ids})
+
+    articless = cur.fetchone()
+
+    cur.close()
+    return render_template('article.html', article=articless)
 
 
 # Register form class
@@ -67,10 +88,10 @@ def register():
         username = form.username.data
         password = sha256_crypt.encrypt(str(form.password.data))
 
-        #Create Cursor
+        # Create Cursor
         cur = mysql.connection.cursor()
 
-        #Execute query
+        # Execute query
         cur.execute("INSERT INTO users(name, email, username, password) VALUES(%s,%s,%s,%s)", (name,email,username,password))
 
         # Commit to Db
@@ -95,7 +116,7 @@ def login():
         password_candidate = request.form['password']
 
         # Create cursor
-        cur =mysql.connection.cursor()
+        cur = mysql.connection.cursor()
 
         # Get user by username
         result = cur.execute("SELECT * FROM users where username =%s", [username])
@@ -151,7 +172,20 @@ def logout():
 @app.route('/dashboard')
 @is_logged_in
 def dashboard():
-    return render_template('dashboard.html')
+
+    cur = mysql.connection.cursor()
+
+    result = cur.execute("SELECT * FROM articles")
+
+    articless = cur.fetchall()  # fetches in dictionary form
+
+    if result > 0:
+        return render_template('dashboard.html', articles=articless)
+    else:
+        msg = 'No Articles Found'
+        return render_template('dashboard.html', msg=msg)
+
+    cur.close()
 
 
 # Article form class
@@ -187,6 +221,60 @@ def add_article():
 
     return render_template('add_article.html', form=form)
 
+
+# Edit article
+@app.route('/edit_article/<string:id>', methods=['GET', 'POST'])
+@is_logged_in
+def edit_article(id):
+
+    cur = mysql.connection.cursor()
+
+    result = cur.execute("SELECT * FROM articles where id = %s", {id})
+
+    article = cur.fetchone()
+
+    form = ArticleForm(request.form)
+
+    form.title.data = article['title']
+    form.body.data = article['body']
+
+    if request.method == 'POST' and form.validate():
+        title = request.form['title']
+        body = request.form['body']
+
+        # Create Cursor
+        cur = mysql.connection.cursor()
+
+        # Execute
+        cur.execute("UPDATE articles SET title=%s, body=%s WHERE id = %s", (title, body, id))
+
+        # Commit to DB
+        mysql.connection.commit()
+
+        # Close connection
+        cur.close()
+
+        flash('Article Updated', 'success')
+
+        return redirect(url_for('dashboard'))
+
+    return render_template('edit_article.html', form=form)
+
+
+# Delete Article
+@app.route('/delete_article/<string:id>', methods=['POST'])
+@is_logged_in
+def delete_article(id):
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("DELETE FROM articles Where id= %s", {id})
+
+    mysql.connection.commit()
+
+    flash('Article Deleted', 'success')
+
+    return redirect(url_for('dashboard'))
 
 if __name__ == "__main__":
     app.secret_key='secret123'
